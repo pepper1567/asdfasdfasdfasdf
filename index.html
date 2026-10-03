@@ -1,0 +1,1825 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>시시포스 시뮬레이터 (Sisyphus Simulator)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Press+Start+2P&family=Cinzel:wght@700;900&display=swap');
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #0a0a0c;
+            overflow: hidden;
+            font-family: 'Gowun Dodum', sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+        }
+
+        .menu-box {
+            background: rgba(20, 20, 25, 0.95);
+            border: 4px solid #4a4a4a;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8), inset 0 0 20px rgba(0,0,0,0.6);
+            pointer-events: auto;
+            border-radius: 16px;
+        }
+
+        .btn {
+            transition: all 0.2s ease;
+            text-shadow: 1px 1px 2px black;
+        }
+        
+        .btn:hover {
+            transform: scale(1.05);
+            filter: brightness(1.2);
+        }
+        
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Mobile Controls */
+        #mobile-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            height: 150px;
+            pointer-events: none;
+            display: none;
+            z-index: 50;
+        }
+        
+        @media (max-width: 768px) {
+            #mobile-controls { display: flex; justify-content: space-between; padding: 0 20px; }
+        }
+
+        .d-pad, .action-btns { pointer-events: auto; display: flex; }
+        .d-pad { position: relative; width: 120px; height: 120px; margin-top: 15px;}
+        .d-btn { 
+            position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.2); 
+            border-radius: 8px; border: 2px solid rgba(255,255,255,0.4);
+            display: flex; justify-content: center; align-items: center; color: white; font-weight: bold;
+            user-select: none;
+        }
+        .d-btn:active { background: rgba(255,255,255,0.5); }
+        .d-up { top: 0; left: 40px; }
+        .d-down { bottom: 0; left: 40px; }
+        .d-left { top: 40px; left: 0; }
+        .d-right { top: 40px; right: 0; }
+
+        .action-btns { align-items: flex-end; gap: 8px; margin-bottom: 10px;}
+        .a-btn { 
+            width: 54px; height: 54px; border-radius: 50%; background: rgba(255,100,100,0.3);
+            border: 2px solid rgba(255,100,100,0.6); display: flex; justify-content: center; align-items: center;
+            color: white; font-weight: bold; font-size: 1rem; user-select: none; pointer-events: auto;
+        }
+        .a-btn.space-btn { background: rgba(100,200,255,0.3); border-color: rgba(100,200,255,0.6); width: 64px; height: 64px; }
+        .a-btn.shift-btn { background: rgba(255,200,50,0.3); border-color: rgba(255,200,50,0.7); display: none; }
+        .a-btn:active { filter: brightness(1.5); }
+        
+        .title-text { font-family: 'Press Start 2P', cursive; letter-spacing: 2px;}
+        .cinzel-font { font-family: 'Cinzel', serif; }
+
+        /* Glitch & Shatter Effects */
+        .glitch-text {
+            position: relative;
+            color: #ff2a2a;
+            font-family: 'Cinzel', serif;
+            font-weight: 900;
+            text-shadow: 0 0 20px rgba(255,0,0,0.8), 2px 2px 0px #00f0ff, -2px -2px 0px #ff0055;
+            animation: glitch 0.3s infinite alternate;
+        }
+
+        @keyframes glitch {
+            0% { transform: translate(0); }
+            20% { transform: translate(-3px, 3px); }
+            40% { transform: translate(-3px, -3px); }
+            60% { transform: translate(3px, 3px); }
+            80% { transform: translate(3px, -3px); }
+            100% { transform: translate(0); }
+        }
+
+        .glitch-text-blue {
+            position: relative;
+            color: #00f3ff;
+            font-family: 'Cinzel', serif;
+            font-weight: 900;
+            text-shadow: 0 0 20px rgba(0,243,255,0.8), 2px 2px 0px #0055ff, -2px -2px 0px #ff0055;
+            animation: glitch 0.3s infinite alternate;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        
+        <!-- Main Menu -->
+        <div id="main-menu" class="menu-box p-8 flex flex-col items-center max-w-md w-full mx-4 text-white">
+            <h1 class="title-text text-3xl md:text-4xl text-center text-orange-400 mb-2">시시포스</h1>
+            <h2 class="text-xl text-gray-400 mb-6 font-bold">SIMULATOR</h2>
+            
+            <p class="text-sm text-gray-300 text-center mb-6 px-4 leading-relaxed">
+                방향키: 이동<br>
+                SPACE: 돌 잡기 (아래에서 잡으면 안정적)<br>
+                Z: 공격 / 파괴
+            </p>
+            
+            <div class="w-full flex flex-col gap-3">
+                <button onclick="startGame('CHALLENGE', 300)" class="btn bg-green-600 py-3 rounded-lg font-bold text-lg">챌린지: 쉬움 (300m)</button>
+                <button onclick="startGame('CHALLENGE', 800)" class="btn bg-yellow-600 py-3 rounded-lg font-bold text-lg">챌린지: 보통 (800m)</button>
+                <button onclick="startGame('CHALLENGE', 1200)" class="btn bg-red-600 py-3 rounded-lg font-bold text-lg">챌린지: 어려움 (1200m)</button>
+                <div class="h-2 border-b border-gray-600 w-1/2 mx-auto my-1"></div>
+                <button onclick="startGame('ENDLESS', 0)" class="btn bg-purple-600 py-3 rounded-lg font-bold text-lg">무한 모드</button>
+            </div>
+        </div>
+
+        <!-- In-Game HUD -->
+        <div id="hud" class="hidden absolute top-0 left-0 w-full p-4 flex justify-between items-start pointer-events-none">
+            <div class="flex flex-col gap-2">
+                <div class="bg-black/60 px-4 py-2 rounded-lg border border-gray-600 text-white font-bold backdrop-blur-sm">
+                    <div class="text-xs text-gray-300" id="hud-score-label">현재 높이</div>
+                    <div id="hud-score" class="text-2xl text-orange-400">0m</div>
+                </div>
+
+                <!-- Heart HP UI (Hidden until Chase) -->
+                <div id="hp-container" class="hidden bg-black/70 px-3 py-1.5 rounded-lg border border-red-900/80 flex items-center gap-1.5 backdrop-blur-sm">
+                    <span class="text-xs text-red-300 font-bold mr-1">HP</span>
+                    <div id="hp-hearts" class="flex gap-1 text-xl">
+                        <span>❤️</span><span>❤️</span><span>❤️</span>
+                    </div>
+                </div>
+
+                <!-- Stamina Bar (Hidden until Chase) -->
+                <div id="stamina-container" class="hidden bg-black/70 px-3 py-1.5 rounded-lg border border-yellow-800/80 w-36 backdrop-blur-sm">
+                    <div class="text-[10px] text-yellow-300 font-bold mb-0.5 flex justify-between">
+                        <span>STAMINA (SHIFT)</span>
+                    </div>
+                    <div class="w-full bg-gray-800 h-2.5 rounded-full overflow-hidden border border-gray-600">
+                        <div id="stamina-bar" class="bg-yellow-400 h-full w-full transition-all duration-75"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col items-end gap-2 text-white font-bold">
+                <div class="bg-black/60 px-4 py-2 rounded-lg border border-gray-600 text-right backdrop-blur-sm">
+                    <div class="text-xs text-gray-300" id="hud-target-label">목표 높이</div>
+                    <div id="hud-target" class="text-xl text-yellow-400">300m</div>
+                </div>
+                <div id="attack-cd-ui" class="bg-black/70 px-3 py-1 rounded border border-blue-500 text-blue-400 text-sm hidden">
+                    Z 장전 완료!
+                </div>
+            </div>
+        </div>
+
+        <!-- Fate Lost / Cutscene Overlay -->
+        <div id="fate-lost-overlay" class="hidden absolute inset-0 bg-black/90 flex flex-col justify-center items-center pointer-events-none z-50">
+            <div class="text-center px-4">
+                <div class="relative mb-2">
+                    <h1 class="glitch-text text-5xl md:text-7xl tracking-widest text-red-600">FATE LOST</h1>
+                </div>
+                <p class="cinzel-font text-red-400 text-lg md:text-2xl tracking-widest font-bold opacity-80 border-t border-b border-red-900/60 py-1 inline-block">DEFEAT</p>
+                <p id="fate-lost-subtext" class="text-gray-400 text-sm mt-6 font-bold tracking-wider animate-pulse">운명을 거스른 자에게 심연의 형벌이 내린다...</p>
+            </div>
+        </div>
+
+        <!-- Crucify Overlay -->
+        <div id="crucify-overlay" class="hidden absolute inset-0 bg-transparent flex flex-col justify-end items-center pointer-events-none z-50 pb-20">
+            <div class="text-center px-4 z-10">
+                <div class="relative mb-2">
+                    <h1 class="glitch-text-blue text-4xl md:text-6xl tracking-widest text-cyan-400">REDITUS AETERNUS</h1>
+                </div>
+                <p class="cinzel-font text-cyan-200 text-lg md:text-xl tracking-widest font-bold opacity-80 border-t border-b border-cyan-900/60 py-1 inline-block">영원한 회귀</p>
+            </div>
+        </div>
+
+        <!-- Game Over / Victory Menu -->
+        <div id="end-menu" class="hidden menu-box p-8 flex flex-col items-center max-w-sm w-full mx-4 text-white">
+            <h1 id="end-title" class="title-text text-3xl mb-4 text-red-500">GAME OVER</h1>
+            <p id="end-desc" class="text-xl mb-6 text-center">돌을 놓치고 말았습니다...</p>
+            <div class="text-2xl mb-8 font-bold text-yellow-400"><span id="end-score-label">도달:</span> <span id="end-score">0</span>m</div>
+            
+            <div class="w-full flex gap-3">
+                <button onclick="returnToMenu()" class="btn bg-gray-600 py-3 flex-1 rounded-lg font-bold text-lg">메뉴로</button>
+                <button onclick="retryGame()" class="btn bg-blue-600 py-3 flex-1 rounded-lg font-bold text-lg">다시하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Controls Overlay -->
+    <div id="mobile-controls">
+        <div class="d-pad">
+            <div class="d-btn d-up" id="btn-up">▲</div>
+            <div class="d-btn d-left" id="btn-left">◀</div>
+            <div class="d-btn d-right" id="btn-right">▶</div>
+            <div class="d-btn d-down" id="btn-down">▼</div>
+        </div>
+        <div class="action-btns">
+            <div class="a-btn shift-btn" id="btn-shift">RUN</div>
+            <div class="a-btn" id="btn-z">Z</div>
+            <div class="a-btn space-btn" id="btn-space">GRAB</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const uiMainMenu = document.getElementById('main-menu');
+        const uiHud = document.getElementById('hud');
+        const uiEndMenu = document.getElementById('end-menu');
+        const hudScore = document.getElementById('hud-score');
+        const hudScoreLabel = document.getElementById('hud-score-label');
+        const hudTargetLabel = document.getElementById('hud-target-label');
+        const hudTarget = document.getElementById('hud-target');
+        const attackCdUi = document.getElementById('attack-cd-ui');
+        const fateLostOverlay = document.getElementById('fate-lost-overlay');
+        const hpContainer = document.getElementById('hp-container');
+        const hpHearts = document.getElementById('hp-hearts');
+        const staminaContainer = document.getElementById('stamina-container');
+        const staminaBar = document.getElementById('stamina-bar');
+        const btnShift = document.getElementById('btn-shift');
+        
+        // Game Settings
+        const PIXELS_PER_METER = 25;
+        const GRAVITY = 0.12;
+        const MAX_FALL_SPEED = 22;
+        const TRACK_WIDTH = 500;
+        const START_Y = 1000;
+        
+        // State
+        let gameState = 'MENU'; // MENU, PLAYING, GAMEOVER, VICTORY
+        let currentMode = 'CHALLENGE';
+        let targetHeight = 300;
+        let score = 0;
+        let cameraY = 0;
+        let animationId;
+        let screenShake = 0;
+        
+        // Easter Egg / Chase State
+        let isChaseMode = false;
+        let chaseTriggered = false;
+        let cutsceneTimer = 0;
+        let isPhase2 = false;
+        let phase2TextTimer = 0;
+        let candleWallTimer = 0;
+        let fallingCandles = [];
+        let candleSpawnTimer = 0;
+        let crucifyTimer = 0;
+
+        let obstacles = [];
+        let nextSpawnY = 0;
+        let downSpawnY = START_Y + 400; // 아래쪽 장애물 트랙 생성 좌표
+        
+        // Input tracking
+        const keys = {
+            ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+            Space: false, z: false, ShiftLeft: false, ShiftRight: false, Shift: false
+        };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') keys.Space = true;
+            if (e.key === 'z' || e.key === 'Z') keys.z = true;
+            if (e.key === 'Shift' || e.code.includes('Shift')) keys.Shift = true;
+            if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') keys.Space = false;
+            if (e.key === 'z' || e.key === 'Z') keys.z = false;
+            if (e.key === 'Shift' || e.code.includes('Shift')) keys.Shift = false;
+            if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+        });
+
+        function bindTouch(btnId, keyName) {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
+            btn.addEventListener('touchcancel', (e) => { e.preventDefault(); keys[keyName] = false; });
+        }
+        bindTouch('btn-up', 'ArrowUp');
+        bindTouch('btn-down', 'ArrowDown');
+        bindTouch('btn-left', 'ArrowLeft');
+        bindTouch('btn-right', 'ArrowRight');
+        bindTouch('btn-space', 'Space');
+        bindTouch('btn-z', 'z');
+        bindTouch('btn-shift', 'Shift');
+
+        let particles = [];
+        class Particle {
+            constructor(x, y, vx, vy, color, life, size) {
+                this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+                this.color = color; this.life = life; this.maxLife = life;
+                this.size = size;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                this.life--;
+            }
+            draw(ctx, camY) {
+                ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y - camY, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        function createParticles(x, y, count, color, speed) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const v = Math.random() * speed;
+                particles.push(new Particle(
+                    x, y, Math.cos(angle)*v, Math.sin(angle)*v,
+                    color, 20 + Math.random()*20, Math.random()*4 + 2
+                ));
+            }
+        }
+
+        function resolveCircleAABB(cx, cy, r, rectX, rectY, rectW, rectH) {
+            let testX = Math.max(rectX, Math.min(cx, rectX + rectW));
+            let testY = Math.max(rectY, Math.min(cy, rectY + rectH));
+            let distX = cx - testX;
+            let distY = cy - testY;
+            let dist = Math.sqrt(distX*distX + distY*distY);
+            if (dist < r) {
+                let overlap = r - dist;
+                let nx = dist === 0 ? 0 : distX / dist;
+                let ny = dist === 0 ? -1 : distY / dist;
+                return { hit: true, dx: nx * overlap, dy: ny * overlap };
+            }
+            return { hit: false };
+        }
+
+        function resolveCircleOBB(cx, cy, r, obbX, obbY, obbW, obbH, angle) {
+            let lx = cx - obbX;
+            let ly = cy - obbY;
+            let cos = Math.cos(-angle);
+            let sin = Math.sin(-angle);
+            let rx = lx * cos - ly * sin;
+            let ry = lx * sin + ly * cos;
+            
+            let res = resolveCircleAABB(rx, ry, r, -obbW/2, -obbH/2, obbW, obbH);
+            if (res.hit) {
+                let cosB = Math.cos(angle);
+                let sinB = Math.sin(angle);
+                return { hit: true, dx: res.dx * cosB - res.dy * sinB, dy: res.dx * sinB + res.dy * cosB };
+            }
+            return { hit: false };
+        }
+
+        class Obstacle {
+            constructor(type, y, cx) {
+                this.type = type; 
+                this.y = y;
+                this.h = 25;
+                this.cx = cx;
+                this.w = 0;
+                this.x = 0;
+                
+                this.angle = 0;
+                this.rotSpeed = 0;
+                this.moveDir = 1;
+                this.speed = 2;
+                
+                const maxW = 200;
+                
+                if (type === 0) {
+                    this.w = 50 + Math.random() * (maxW - 50);
+                    this.x = cx - TRACK_WIDTH/2;
+                } else if (type === 1) {
+                    this.w = 50 + Math.random() * (maxW - 50);
+                    this.x = cx + TRACK_WIDTH/2 - this.w;
+                } else if (type === 2) {
+                    this.w = 50 + Math.random() * (maxW - 80);
+                    this.x = cx - this.w/2;
+                } else if (type === 3) {
+                    this.w = 80;
+                    this.x = cx - TRACK_WIDTH/2;
+                    this.speed = 2 + Math.random() * 2;
+                } else if (type === 4) {
+                    this.w = 160;
+                    this.x = cx;
+                    this.y = y + 20; 
+                    this.rotSpeed = (Math.random() > 0.5 ? 1 : -1) * (0.02 + Math.random() * 0.03);
+                } else if (type === 5) { 
+                    this.w = 80 + Math.random() * (maxW - 50);
+                    let align = Math.floor(Math.random() * 3);
+                    if (align === 0) this.x = cx - TRACK_WIDTH/2;
+                    else if (align === 1) this.x = cx + TRACK_WIDTH/2 - this.w;
+                    else this.x = cx - this.w/2;
+                    this.h = 40;
+                }
+            }
+            
+            update() {
+                if (this.type === 3) {
+                    this.x += this.speed * this.moveDir;
+                    if (this.x < this.cx - TRACK_WIDTH/2) { this.x = this.cx - TRACK_WIDTH/2; this.moveDir = 1; }
+                    if (this.x + this.w > this.cx + TRACK_WIDTH/2) { this.x = this.cx + TRACK_WIDTH/2 - this.w; this.moveDir = -1; }
+                } else if (this.type === 4) {
+                    this.angle += this.rotSpeed;
+                }
+            }
+            
+            draw(ctx, camY) {
+                const drawY = this.y - camY;
+                if (drawY > canvas.height + 100 || drawY < -100) return;
+                
+                ctx.save();
+                if (this.type === 5) {
+                    ctx.fillStyle = '#0a0a0c';
+                    ctx.fillRect(this.x, drawY, this.w, this.h);
+                    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+                    ctx.fillRect(this.x, drawY, this.w, 10);
+                    ctx.fillRect(this.x, drawY, 10, this.h);
+                    ctx.strokeStyle = isChaseMode ? '#450a0a' : '#1e1a17';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(this.x, drawY, this.w, this.h);
+                } else if (this.type === 4) {
+                    ctx.translate(this.x, drawY);
+                    ctx.rotate(this.angle);
+                    ctx.fillStyle = isChaseMode ? '#3f1d24' : '#5a3a29';
+                    ctx.fillRect(-this.w/2, -this.h/2, this.w, this.h);
+                    ctx.strokeStyle = isChaseMode ? '#881337' : '#382216';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(-this.w/2, -this.h/2, this.w, this.h);
+                    ctx.fillStyle = '#aaa';
+                    ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill();
+                } else {
+                    ctx.fillStyle = isChaseMode ? '#27272a' : (this.type === 3 ? '#4b5563' : '#374151');
+                    ctx.fillRect(this.x, drawY, this.w, this.h);
+                    ctx.strokeStyle = isChaseMode ? '#71717a' : '#1f2937';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(this.x, drawY, this.w, this.h);
+                    
+                    if (this.type === 3) {
+                        ctx.fillStyle = isChaseMode ? 'rgba(239, 68, 68, 0.5)' : 'rgba(245, 158, 11, 0.4)';
+                        for(let i=0; i<this.w; i+=20) {
+                            ctx.beginPath();
+                            ctx.moveTo(this.x + i, drawY);
+                            ctx.lineTo(this.x + i + 10, drawY);
+                            ctx.lineTo(this.x + i, drawY + this.h);
+                            ctx.lineTo(this.x + i - 10, drawY + this.h);
+                            ctx.fill();
+                        }
+                    }
+                }
+                ctx.restore();
+            }
+            
+            collide(entity) {
+                if (this.type === 4) {
+                    return resolveCircleOBB(entity.x, entity.y, entity.r, this.x, this.y, this.w, this.h, this.angle);
+                } else {
+                    return resolveCircleAABB(entity.x, entity.y, entity.r, this.x, this.y, this.w, this.h);
+                }
+            }
+        }
+
+        class CandleObstacle {
+            constructor(x, targetY) {
+                this.x = x;
+                this.targetY = targetY;
+                this.y = cameraY - 100; // 떨어지기 시작
+                this.w = 32;
+                this.h = 36;
+                this.isLanded = false;
+                this.fallSpeed = 20; // 떨어지는 속도 대폭 상향
+            }
+
+            update() {
+                if (!this.isLanded) {
+                    this.y += this.fallSpeed;
+                    if (this.y >= this.targetY) {
+                        this.y = this.targetY;
+                        this.isLanded = true;
+                        screenShake = 8; // 착지 시 쉐이킹 강화
+                        createParticles(this.x + 16, this.y + 36, 12, '#00f3ff', 3);
+                    }
+                }
+            }
+
+            draw(ctx, camY) {
+                const drawY = this.y - camY;
+                if (drawY > canvas.height + 100 || drawY < -100) return;
+
+                // 촛불 세트 그리기
+                ctx.save();
+                
+                // 그림자
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.beginPath();
+                ctx.ellipse(this.x + 16, drawY + 34, 16, 6, 0, 0, Math.PI*2);
+                ctx.fill();
+
+                // 촛대 / 받침
+                ctx.fillStyle = '#262626';
+                ctx.fillRect(this.x + 4, drawY + 26, 24, 8);
+
+                // 양초 기둥 3개
+                ctx.fillStyle = '#e2e8f0';
+                ctx.fillRect(this.x + 6, drawY + 12, 6, 14);
+                ctx.fillRect(this.x + 13, drawY + 6, 6, 20);
+                ctx.fillRect(this.x + 20, drawY + 14, 6, 12);
+
+                // 파란 불꽃 (flicker)
+                const flicker = Math.sin(Date.now() * 0.01 + this.x) * 2;
+                ctx.fillStyle = '#00f3ff';
+                ctx.beginPath();
+                ctx.arc(this.x + 9, drawY + 8 + flicker, 4, 0, Math.PI*2);
+                ctx.arc(this.x + 16, drawY + 2 + flicker, 5, 0, Math.PI*2);
+                ctx.arc(this.x + 23, drawY + 10 + flicker, 4, 0, Math.PI*2);
+                ctx.fill();
+
+                // 불꽃 후광 (Glow)
+                ctx.fillStyle = 'rgba(0, 243, 255, 0.25)';
+                ctx.beginPath();
+                ctx.arc(this.x + 16, drawY + 10, 22, 0, Math.PI*2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            collide(entity) {
+                if (!this.isLanded) return { hit: false };
+                return resolveCircleAABB(entity.x, entity.y, entity.r, this.x, this.y, this.w, this.h);
+            }
+        }
+
+        class Player {
+            constructor() {
+                this.r = 18;
+                this.x = 0;
+                this.y = 0;
+                this.speed = 3.5;
+                this.sprintSpeed = 6.2;
+                this.facing = { dx: 0, dy: -1 };
+                this.isGrabbing = false;
+                this.grabOffset = { x: 0, y: 0 };
+                this.slipTimer = 0;
+                this.maxSlipTime = 90;
+                this.attackCooldown = 0;
+                this.maxAttackCooldown = 60;
+                this.color = '#e2a36b';
+                this.grabDisabledTimer = 0;
+
+                // Chase Mode Stats
+                this.hp = 3;
+                this.maxHp = 3;
+                this.stamina = 100;
+                this.maxStamina = 100;
+                this.invincibleTimer = 0;
+                this.isSprinting = false;
+            }
+
+            reset(startX, startY) {
+                this.x = startX;
+                this.y = startY;
+                this.isGrabbing = false;
+                this.slipTimer = 0;
+                this.attackCooldown = 0;
+                this.grabDisabledTimer = 0;
+                this.facing = { dx: 0, dy: -1 };
+                this.hp = 3;
+                this.stamina = 100;
+                this.invincibleTimer = 0;
+                this.isSprinting = false;
+            }
+
+            takeDamage(amount) {
+                if (this.invincibleTimer > 0) return;
+                this.hp -= amount;
+                this.invincibleTimer = 90; // 1.5초 무적
+                screenShake = 10;
+                createParticles(this.x, this.y, 25, '#ff0000', 5);
+
+                // Update Heart UI
+                updateHpUI();
+
+                if (this.hp <= 0) {
+                    if (isChaseMode) {
+                        triggerGameOver(false, "crucify");
+                    } else {
+                        triggerGameOver(false, "심연의 괴수에게 집어삼켜졌습니다...");
+                    }
+                }
+            }
+
+            update() {
+                if (this.attackCooldown > 0) this.attackCooldown--;
+                if (this.grabDisabledTimer > 0) this.grabDisabledTimer--;
+                if (this.invincibleTimer > 0) this.invincibleTimer--;
+
+                attackCdUi.style.display = (this.attackCooldown === 0) ? 'block' : 'none';
+
+                // Stamina & Sprint handling
+                let wantSprint = keys.Shift && isChaseMode;
+                if (wantSprint && this.stamina > 2 && (keys.ArrowUp || keys.ArrowDown || keys.ArrowLeft || keys.ArrowRight)) {
+                    this.isSprinting = true;
+                    this.stamina = Math.max(0, this.stamina - 0.7);
+                } else {
+                    this.isSprinting = false;
+                    if (this.stamina < this.maxStamina) {
+                        this.stamina = Math.min(this.maxStamina, this.stamina + 0.35);
+                    }
+                }
+
+                if (isChaseMode) {
+                    staminaBar.style.width = (this.stamina / this.maxStamina * 100) + '%';
+                }
+
+                // Determine movement intent
+                let dx = 0; let dy = 0;
+                if (keys.ArrowUp) dy -= 1;
+                if (keys.ArrowDown) dy += 1;
+                if (keys.ArrowLeft) dx -= 1;
+                if (keys.ArrowRight) dx += 1;
+
+                if (dx !== 0 || dy !== 0) {
+                    const len = Math.hypot(dx, dy);
+                    dx /= len; dy /= len;
+                    this.facing = { dx, dy };
+                }
+
+                // Grab Logic
+                let grabAttempt = keys.Space && this.grabDisabledTimer === 0;
+                let currentDist = Math.hypot(boulder.x - this.x, boulder.y - this.y);
+                let canReach = currentDist < this.r + boulder.r + 15;
+
+                if (grabAttempt && canReach) {
+                    if (!this.isGrabbing) {
+                        this.isGrabbing = true;
+                        this.grabOffset = { x: boulder.x - this.x, y: boulder.y - this.y };
+                    }
+                } else {
+                    this.isGrabbing = false;
+                    this.slipTimer = 0;
+                }
+
+                // Slip logic
+                if (this.isGrabbing) {
+                    let angle = Math.atan2(this.grabOffset.y, this.grabOffset.x);
+                    let isSecure = (angle > -3*Math.PI/4 && angle < -Math.PI/4);
+                    
+                    if (!isSecure) {
+                        this.slipTimer++;
+                        if (this.slipTimer > this.maxSlipTime) {
+                            this.isGrabbing = false;
+                            this.grabDisabledTimer = 60;
+                            this.slipTimer = 0;
+                            createParticles(this.x, this.y, 15, '#ff4444', 4);
+                            boulder.vy += 2;
+                        }
+                    } else {
+                        this.slipTimer = 0;
+                    }
+
+                    let minAngle = -150 * (Math.PI / 180);
+                    let maxAngle = -30 * (Math.PI / 180);
+
+                    if (this.isGrabbing && angle >= minAngle && angle <= maxAngle) {
+                        const idealOffsetX = 0;
+                        const idealOffsetY = -(this.r + boulder.r - 2);
+                        this.grabOffset.x += (idealOffsetX - this.grabOffset.x) * 0.015;
+                        this.grabOffset.y += (idealOffsetY - this.grabOffset.y) * 0.015;
+                    }
+                }
+
+                // Current movement speed
+                let currentSpeed = this.speed;
+                if (this.isSprinting) currentSpeed = this.sprintSpeed;
+                if (this.isGrabbing) currentSpeed *= 0.4;
+
+                this.x += dx * currentSpeed;
+                this.y += dy * currentSpeed;
+
+                // Track Boundary
+                let trackLeft = canvas.width/2 - TRACK_WIDTH/2 + this.r;
+                let trackRight = canvas.width/2 + TRACK_WIDTH/2 - this.r;
+                this.x = Math.max(trackLeft, Math.min(trackRight, this.x));
+
+                // Obstacle Collisions
+                for (let obs of obstacles) {
+                    let res = obs.collide(this);
+                    if (res.hit) {
+                        this.x += res.dx;
+                        this.y += res.dy;
+                    }
+                }
+
+                // Candle Collisions
+                for (let candle of fallingCandles) {
+                    let res = candle.collide(this);
+                    if (res.hit) {
+                        this.x += res.dx;
+                        this.y += res.dy;
+                    }
+                }
+
+                // Grabbed Boulder movement
+                if (this.isGrabbing) {
+                    let targetBx = this.x + this.grabOffset.x;
+                    let targetBy = this.y + this.grabOffset.y;
+                    
+                    let bTrackLeft = canvas.width/2 - TRACK_WIDTH/2 + boulder.r;
+                    let bTrackRight = canvas.width/2 + TRACK_WIDTH/2 - boulder.r;
+                    
+                    if (targetBx < bTrackLeft) { targetBx = bTrackLeft; this.x = targetBx - this.grabOffset.x; }
+                    if (targetBx > bTrackRight) { targetBx = bTrackRight; this.x = targetBx - this.grabOffset.x; }
+                    
+                    boulder.x = targetBx;
+                    boulder.y = targetBy;
+                    boulder.vx = 0;
+                    boulder.vy = 0;
+                } else {
+                    let dist = Math.hypot(boulder.x - this.x, boulder.y - this.y);
+                    if (dist < this.r + boulder.r) {
+                        let overlap = this.r + boulder.r - dist;
+                        let nx = (this.x - boulder.x) / dist;
+                        let ny = (this.y - boulder.y) / dist;
+                        
+                        if (ny > 0.2) {
+                            boulder.x -= nx * overlap;
+                            boulder.y -= ny * overlap;
+                            if (boulder.vy > 0) boulder.vy = 0;
+                        } else {
+                            this.x += nx * overlap;
+                            this.y += ny * overlap;
+                        }
+                    }
+                }
+
+                // Attack Logic (Z Key)
+                if (keys.z && this.attackCooldown === 0) {
+                    this.attackCooldown = this.maxAttackCooldown;
+                    this.isGrabbing = false;
+                    
+                    let hx = this.x + this.facing.dx * 35;
+                    let hy = this.y + this.facing.dy * 35;
+                    
+                    // Boulder Hit
+                    let distToB = Math.hypot(boulder.x - hx, boulder.y - hy);
+                    if (distToB < boulder.r + 20) {
+                        boulder.vx = this.facing.dx * 5;
+                        boulder.vy = (this.facing.dy < 0) ? -5 : this.facing.dy * 5; 
+                        createParticles(boulder.x, boulder.y + boulder.r/2, 20, '#ffffff', 6);
+                        this.grabDisabledTimer = 30;
+                    }
+
+                    // Candle Destroy Hit!
+                    for (let i = fallingCandles.length - 1; i >= 0; i--) {
+                        let c = fallingCandles[i];
+                        let distToCandle = Math.hypot((c.x + 16) - hx, (c.y + 18) - hy);
+                        if (distToCandle < 40) {
+                            createParticles(c.x + 16, c.y + 18, 20, '#00f3ff', 5);
+                            fallingCandles.splice(i, 1);
+                        }
+                    }
+
+                    createParticles(hx, hy, 12, isChaseMode ? '#00ffff' : '#ffff00', 3);
+                }
+            }
+
+            draw(ctx, camY) {
+                const drawY = this.y - camY;
+
+                // Invincibility Blink
+                if (this.invincibleTimer > 0 && Math.floor(Date.now() / 50) % 2 === 0) {
+                    return;
+                }
+
+                if (this.slipTimer > 0) {
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(this.x - 20, drawY - 35, 40, 6);
+                    let ratio = this.slipTimer / this.maxSlipTime;
+                    ctx.fillStyle = ratio > 0.7 ? '#ff0000' : '#ffff00';
+                    ctx.fillRect(this.x - 20, drawY - 35, 40 * ratio, 6);
+                }
+
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.beginPath();
+                ctx.ellipse(this.x, drawY + this.r, this.r, this.r/2, 0, 0, Math.PI*2);
+                ctx.fill();
+
+                // Player Body
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, drawY, this.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#8a5c34';
+                ctx.stroke();
+
+                // Sprint trail effect
+                if (this.isSprinting) {
+                    ctx.fillStyle = 'rgba(255,200,50,0.3)';
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.facing.dx * 12, drawY - this.facing.dy * 12, this.r * 0.8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Facing direction indicator
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(this.x + this.facing.dx * 8, drawY + this.facing.dy * 8, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (this.isGrabbing) {
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, drawY);
+                    ctx.lineTo(this.x + this.grabOffset.x * 0.5, drawY + this.grabOffset.y * 0.5);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        class Boulder {
+            constructor() {
+                this.r = 45;
+                this.x = 0;
+                this.y = 0;
+                this.vx = 0;
+                this.vy = 0;
+                this.friction = 0.96;
+                this.rotation = 0;
+            }
+
+            reset(startX, startY) {
+                this.x = startX;
+                this.y = startY;
+                this.vx = 0;
+                this.vy = 0;
+                this.rotation = 0;
+            }
+
+            update() {
+                if (!player.isGrabbing) {
+                    this.vy += GRAVITY;
+                    if (this.vy > MAX_FALL_SPEED) this.vy = MAX_FALL_SPEED;
+
+                    this.vx *= this.friction;
+                    
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    this.rotation += (this.vx * 0.05) + (this.vy * 0.02);
+
+                    let trackLeft = canvas.width/2 - TRACK_WIDTH/2 + this.r;
+                    let trackRight = canvas.width/2 + TRACK_WIDTH/2 - this.r;
+                    
+                    if (this.x < trackLeft) {
+                        this.x = trackLeft;
+                        this.vx *= -0.15;
+                    }
+                    if (this.x > trackRight) {
+                        this.x = trackRight;
+                        this.vx *= -0.15;
+                    }
+                }
+
+                // Obstacle collisions
+                for (let obs of obstacles) {
+                    let res = obs.collide(this);
+                    if (res.hit) {
+                        this.x += res.dx;
+                        this.y += res.dy;
+                        
+                        if (!player.isGrabbing) {
+                            if (obs.type === 3) this.vx += obs.moveDir * obs.speed * 0.3;
+                            if (res.dy < 0 && this.vy > 0) this.vy *= -0.15;
+                            if (res.dx !== 0) this.vx *= -0.15;
+                        } else {
+                            let distToPlayer = Math.hypot(this.x - player.x, this.y - player.y);
+                            if (distToPlayer > this.r + player.r + 25) {
+                                player.isGrabbing = false;
+                                player.grabDisabledTimer = 60;
+                                player.slipTimer = 0;
+                                createParticles(this.x, this.y, 15, '#ff4444', 4);
+                            }
+                        }
+                    }
+                }
+
+                // Crush Candle Obstacles
+                for (let i = fallingCandles.length - 1; i >= 0; i--) {
+                    let c = fallingCandles[i];
+                    let res = resolveCircleAABB(this.x, this.y, this.r, c.x, c.y, c.w, c.h);
+                    if (res.hit) {
+                        createParticles(c.x + 16, c.y + 18, 15, '#00f3ff', 4);
+                        fallingCandles.splice(i, 1);
+                    }
+                }
+            }
+
+            draw(ctx, camY) {
+                const drawY = this.y - camY;
+                
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.beginPath();
+                ctx.ellipse(this.x, drawY + this.r - 5, this.r + 5, this.r/2 + 2, 0, 0, Math.PI*2);
+                ctx.fill();
+
+                ctx.save();
+                ctx.translate(this.x, drawY);
+                ctx.rotate(this.rotation);
+
+                let grad = ctx.createRadialGradient(-15, -15, 5, 0, 0, this.r);
+                grad.addColorStop(0, isChaseMode ? '#ef4444' : '#9ca3af');
+                grad.addColorStop(0.7, isChaseMode ? '#7f1d1d' : '#4b5563');
+                grad.addColorStop(1, '#1f2937');
+                
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.r, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = '#374151';
+                ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(-10, -10, 10, 0, Math.PI); ctx.stroke();
+                ctx.beginPath(); ctx.arc(20, 10, 8, 0, Math.PI * 1.5); ctx.stroke();
+                ctx.beginPath(); ctx.arc(-5, 25, 12, 1, 4); ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        class AbyssMonster {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = START_Y - 300;
+                this.speed = 3.6;
+                this.width = 120;
+                this.height = 140;
+
+                this.state = 'CHASE'; 
+                this.attackTimer = 0;
+                this.cooldown = 120; 
+
+                this.targetArea = null; 
+                this.contactTimer = 0;
+                this.belowTimer = 0;
+            }
+
+            reset(startX, startY) {
+                this.x = startX;
+                this.y = startY;
+                this.state = 'CHASE';
+                this.attackTimer = 0;
+                this.cooldown = 120;
+                this.targetArea = null;
+                this.contactTimer = 0;
+                this.belowTimer = 0;
+            }
+
+            update() {
+                let chargeFrames = isPhase2 ? 30 : 60; // 2페이즈 시 0.5초(30프레임)로 차징 속도 향상
+
+                // 플레이어 1초 이상 접촉 시 즉사
+                let distToP = Math.hypot(player.x - this.x, player.y - this.y);
+                if (distToP < 60 + player.r) {
+                    this.contactTimer++;
+                    if (this.contactTimer >= 60) {
+                        player.hp = 0;
+                        triggerGameOver(false, "crucify");
+                        return;
+                    }
+                } else {
+                    this.contactTimer = 0;
+                }
+
+                // 간수가 플레이어보다 아래에 1초 이상 머물 시 즉사
+                if (this.y > player.y + 20) {
+                    this.belowTimer++;
+                    if (this.belowTimer >= 60) {
+                        player.hp = 0;
+                        triggerGameOver(false, "crucify");
+                        return;
+                    }
+                } else {
+                    this.belowTimer = 0;
+                }
+
+                if (this.state === 'CHASE') {
+                    this.x += (player.x - this.x) * 0.04;
+                    let distY = player.y - this.y;
+                    let targetSpeed = this.speed;
+                    if (distY > 450) targetSpeed = 5.2;
+                    else if (distY < 220) targetSpeed = 2.0;
+
+                    this.y += targetSpeed;
+
+                    this.cooldown--;
+                    if (this.cooldown <= 0) {
+                        this.cooldown = isPhase2 ? (80 + Math.random() * 40) : (160 + Math.random() * 60);
+                        
+                        if (isPhase2) {
+                            let r = Math.random();
+                            if (r < 0.33) this.startDashPattern();
+                            else if (r < 0.66) this.startFanPattern();
+                            else this.startJumpPattern(); // 신규 JUMP 패턴 추가
+                        } else {
+                            if (Math.random() < 0.5) this.startDashPattern();
+                            else this.startFanPattern();
+                        }
+                    }
+                } else if (this.state === 'CHARGING_DASH') {
+                    this.attackTimer++;
+                    if (this.attackTimer >= chargeFrames) { 
+                        this.state = 'DASHING';
+                        this.attackTimer = 0;
+                        screenShake = 8; // 적 공격 시 카메라 흔들림
+                    }
+                } else if (this.state === 'DASHING') {
+                    this.y += 18;
+                    this.attackTimer++;
+                    
+                    if (this.targetArea) {
+                        let res = resolveCircleAABB(player.x, player.y, player.r, this.targetArea.x, this.targetArea.y, this.targetArea.w, this.targetArea.h);
+                        if (res.hit) player.takeDamage(1);
+                    }
+
+                    if (this.attackTimer >= 20) {
+                        this.state = 'CHASE';
+                        this.targetArea = null;
+                    }
+                } else if (this.state === 'CHARGING_FAN') {
+                    this.attackTimer++;
+                    if (this.attackTimer >= chargeFrames) { 
+                        this.state = 'ATTACKING_FAN';
+                        this.attackTimer = 0;
+                        screenShake = 10; // 화염 폭발 시 카메라 흔들림
+
+                        let angleToPlayer = Math.atan2(player.y - this.y, player.x - this.x);
+                        let distToPlayer = Math.hypot(player.x - this.x, player.y - this.y);
+                        
+                        let angleDiff = Math.abs(angleToPlayer - Math.PI/2); 
+                        if (distToPlayer <= 260 && angleDiff <= Math.PI/4) { 
+                            player.takeDamage(1);
+                        }
+                    }
+                } else if (this.state === 'ATTACKING_FAN') {
+                    this.attackTimer++;
+                    if (this.attackTimer >= 20) {
+                        this.state = 'CHASE';
+                        this.targetArea = null;
+                    }
+                } else if (this.state === 'JUMP_PREPARE') {
+                    this.attackTimer++;
+                    if (this.attackTimer >= 30) {
+                        this.state = 'JUMP_WARNING';
+                        this.attackTimer = 0;
+                        this.targetArea = { x: player.x, y: player.y, r: 85 };
+                    }
+                } else if (this.state === 'JUMP_WARNING') {
+                    this.attackTimer++;
+                    this.targetArea.x = player.x; // 플레이어 위치 계속 추적
+                    this.targetArea.y = player.y;
+                    if (this.attackTimer >= 30) { // 0.5초간 예고
+                        this.state = 'JUMP_LOCK';
+                        this.attackTimer = 0;
+                    }
+                } else if (this.state === 'JUMP_LOCK') {
+                    this.attackTimer++;
+                    if (this.attackTimer >= 30) { // 0.5초간 위치 고정
+                        this.state = 'JUMP_LAND';
+                        this.attackTimer = 0;
+                        
+                        // 데미지 판정 (달리지 않으면 범위 내)
+                        let dist = Math.hypot(player.x - this.targetArea.x, player.y - this.targetArea.y);
+                        if (dist <= this.targetArea.r + player.r) {
+                            player.takeDamage(1);
+                        }
+                        
+                        // 괴수가 낙하한 위치로 텔레포트
+                        this.x = this.targetArea.x;
+                        this.y = this.targetArea.y - 20; 
+                        screenShake = 18;
+                        createParticles(this.targetArea.x, this.targetArea.y, 40, '#ff0000', 8);
+                        createParticles(this.targetArea.x, this.targetArea.y, 20, '#000000', 5);
+                    }
+                } else if (this.state === 'JUMP_LAND') {
+                    this.attackTimer++;
+                    if (this.attackTimer >= 20) {
+                        this.state = 'CHASE';
+                        this.targetArea = null;
+                    }
+                }
+            }
+
+            startDashPattern() {
+                this.state = 'CHARGING_DASH';
+                this.attackTimer = 0;
+                this.targetArea = { x: this.x - 45, y: this.y + 40, w: 90, h: 380 };
+            }
+
+            startFanPattern() {
+                this.state = 'CHARGING_FAN';
+                this.attackTimer = 0;
+                this.targetArea = { cx: this.x, cy: this.y + 20, radius: 260, startAngle: Math.PI/2 - Math.PI/4, endAngle: Math.PI/2 + Math.PI/4 };
+            }
+
+            startJumpPattern() {
+                this.state = 'JUMP_PREPARE';
+                this.attackTimer = 0;
+                // 사라지면서 연출
+                createParticles(this.x, this.y, 20, '#000000', 6);
+            }
+
+            draw(ctx, camY) {
+                const drawY = this.y - camY;
+                let chargeFrames = isPhase2 ? 30 : 60;
+
+                // 1. 공격 범위 가이드
+                if (this.state === 'CHARGING_DASH' && this.targetArea) {
+                    const areaY = this.targetArea.y - camY;
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.35)';
+                    ctx.fillRect(this.targetArea.x, areaY, this.targetArea.w, this.targetArea.h);
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(this.targetArea.x, areaY, this.targetArea.w, this.targetArea.h);
+                    
+                    let progress = this.attackTimer / chargeFrames;
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+                    ctx.fillRect(this.targetArea.x, areaY, this.targetArea.w, this.targetArea.h * progress);
+                    ctx.restore();
+                } else if (this.state === 'CHARGING_FAN' && this.targetArea) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, drawY + 20);
+                    ctx.arc(this.x, drawY + 20, this.targetArea.radius, this.targetArea.startAngle, this.targetArea.endAngle);
+                    ctx.closePath();
+                    
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.35)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    let progress = this.attackTimer / chargeFrames;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, drawY + 20);
+                    ctx.arc(this.x, drawY + 20, this.targetArea.radius * progress, this.targetArea.startAngle, this.targetArea.endAngle);
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+                    ctx.fill();
+
+                    ctx.restore();
+                } else if (this.state === 'ATTACKING_FAN') {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, drawY + 20);
+                    ctx.arc(this.x, drawY + 20, 260, Math.PI/2 - Math.PI/4, Math.PI/2 + Math.PI/4);
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(0, 243, 255, 0.65)';
+                    ctx.fill();
+                    ctx.restore();
+                } else if (this.state === 'JUMP_WARNING') {
+                    const cx = this.targetArea.x;
+                    const cy = this.targetArea.y - camY;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, this.targetArea.r, 0, Math.PI*2);
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    
+                    let progress = this.attackTimer / 30; // 0.5초 경과
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, this.targetArea.r * progress, 0, Math.PI*2);
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.5)';
+                    ctx.fill();
+                    ctx.restore();
+                } else if (this.state === 'JUMP_LOCK') {
+                    const cx = this.targetArea.x;
+                    const cy = this.targetArea.y - camY;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, this.targetArea.r, 0, Math.PI*2);
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 5;
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // 2. 몬스터 본체 그리기 (점프 예고 시에는 렌더링하지 않음)
+                if (this.state !== 'JUMP_PREPARE' && this.state !== 'JUMP_WARNING' && this.state !== 'JUMP_LOCK') {
+                    ctx.save();
+                    
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(this.x, drawY - 40, 32, 0, Math.PI*2);
+                    ctx.stroke();
+                    for(let a=0; a<Math.PI*2; a+=Math.PI/4) {
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + Math.cos(a)*25, drawY - 40 + Math.sin(a)*25);
+                        ctx.lineTo(this.x + Math.cos(a)*45, drawY - 40 + Math.sin(a)*45);
+                        ctx.stroke();
+                    }
+
+                    ctx.fillStyle = '#09090b';
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - 50, drawY + 60);
+                    ctx.quadraticCurveTo(this.x - 40, drawY - 20, this.x, drawY - 35);
+                    ctx.quadraticCurveTo(this.x + 40, drawY - 20, this.x + 50, drawY + 60);
+                    ctx.lineTo(this.x + 60, drawY + 90);
+                    ctx.lineTo(this.x - 60, drawY + 90);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.strokeStyle = '#27272a';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    for (let i = -3; i <= 3; i++) {
+                        let cx = this.x + i * 14;
+                        let cy = drawY - 10 - Math.abs(i)*4;
+                        ctx.fillStyle = '#3f3f46';
+                        ctx.fillRect(cx - 2, cy - 25, 4, 25);
+                        ctx.fillStyle = '#00f3ff';
+                        ctx.beginPath();
+                        ctx.arc(cx, cy - 28 + Math.sin(Date.now()*0.01 + i)*2, 4, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+
+                    ctx.strokeStyle = '#71717a';
+                    ctx.lineWidth = 5;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - 45, drawY - 60);
+                    ctx.lineTo(this.x - 55, drawY + 90);
+                    ctx.stroke();
+                    ctx.strokeRect(this.x - 65, drawY - 55, 40, 10);
+                    ctx.strokeRect(this.x - 50, drawY - 75, 10, 40);
+
+                    ctx.strokeStyle = '#a1a1aa';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - 20, drawY + 30); ctx.lineTo(this.x - 35, drawY + 65);
+                    ctx.moveTo(this.x, drawY + 35); ctx.lineTo(this.x, drawY + 75);
+                    ctx.moveTo(this.x + 20, drawY + 30); ctx.lineTo(this.x + 35, drawY + 65);
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+            }
+        }
+
+        const player = new Player();
+        const boulder = new Boulder();
+        const monster = new AbyssMonster();
+
+        function updateHpUI() {
+            let html = '';
+            for (let i = 0; i < player.maxHp; i++) {
+                if (i < player.hp) html += '❤️';
+                else html += '🖤';
+            }
+            hpHearts.innerHTML = html;
+        }
+
+        function spawnCandleWall() {
+            let fd = player.facing;
+            if (fd.dx === 0 && fd.dy === 0) fd = {dx: 0, dy: -1}; // 기본 방향
+
+            let centerTargetX = player.x + fd.dx * 200; // 앞쪽 200px 거리
+            let centerTargetY = player.y + fd.dy * 200;
+            
+            let perpX = -fd.dy;
+            let perpY = fd.dx;
+            
+            let candleCount = 7; // 방벽 길이
+            let spacing = 32; 
+            
+            for (let i = 0; i < candleCount; i++) {
+                let offset = (i - (candleCount-1)/2) * spacing;
+                let tx = centerTargetX + perpX * offset;
+                let ty = centerTargetY + perpY * offset;
+                
+                let trackLeft = canvas.width/2 - TRACK_WIDTH/2 + 15;
+                let trackRight = canvas.width/2 + TRACK_WIDTH/2 - 15;
+                if (tx < trackLeft || tx > trackRight) continue;
+                
+                let c = new CandleObstacle(tx, ty);
+                c.y = cameraY - 150; // 높은 곳에서 떨어짐
+                c.fallSpeed = 26; // 벽은 순식간에 내려찍음
+                fallingCandles.push(c);
+            }
+        }
+
+        function drawBackground() {
+            ctx.fillStyle = isChaseMode ? '#05020a' : '#0a0a0c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const left = canvas.width/2 - TRACK_WIDTH/2;
+            
+            // 트랙 바닥
+            ctx.fillStyle = isChaseMode ? '#180914' : '#2c2723';
+            ctx.fillRect(left, 0, TRACK_WIDTH, canvas.height);
+
+            // 트랙 경계선
+            ctx.strokeStyle = isChaseMode ? '#881337' : '#5a4d41';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.moveTo(left, 0); ctx.lineTo(left, canvas.height);
+            ctx.moveTo(left + TRACK_WIDTH, 0); ctx.lineTo(left + TRACK_WIDTH, canvas.height);
+            ctx.stroke();
+
+            // 거리 표시 눈금 (10m 마다)
+            ctx.fillStyle = isChaseMode ? '#f43f5e' : '#5a4d41';
+            ctx.font = '14px "Press Start 2P"';
+            ctx.textAlign = 'left';
+            
+            const startMod = cameraY % 100;
+            for (let y = -startMod; y < canvas.height; y += 100) {
+                ctx.beginPath();
+                ctx.moveTo(left, y);
+                ctx.lineTo(left + TRACK_WIDTH, y);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = isChaseMode ? 'rgba(244, 63, 94, 0.15)' : 'rgba(255,255,255,0.05)';
+                ctx.stroke();
+
+                const worldY = cameraY + y;
+                // 절대 Y좌표로 미터 산출
+                let m = Math.floor((START_Y - worldY) / PIXELS_PER_METER);
+
+                if (worldY % 250 === 0 && !isChaseMode) {
+                    if (m >= 0) {
+                        ctx.fillText(`${m}m`, left + 15, y - 5);
+                    }
+                } else if (isChaseMode && worldY % 250 === 0) {
+                    ctx.fillText(`${m}m`, left + 15, y - 5);
+                }
+            }
+
+            // -400m 아래에서부터 빛이 새어나오는 연출 (-600m에서 완전히 뒤덮음)
+            let depth = Math.floor((player.y - START_Y) / PIXELS_PER_METER);
+            if (depth >= 400) {
+                let lightProgress = Math.min(1.0, (depth - 400) / 200); 
+                let grad = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - 400 - (lightProgress * 300));
+                grad.addColorStop(0, `rgba(254, 240, 138, ${lightProgress * 0.95})`);
+                grad.addColorStop(0.5, `rgba(251, 191, 36, ${lightProgress * 0.55})`);
+                grad.addColorStop(1, 'rgba(0,0,0,0)');
+                
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function update(time) {
+            if (gameState === 'CRUCIFIED') {
+                crucifyTimer++;
+                if (crucifyTimer > 180) {
+                    document.getElementById('crucify-overlay').classList.add('hidden');
+                    gameState = 'GAMEOVER';
+                    uiEndMenu.classList.remove('hidden');
+                    
+                    const title = document.getElementById('end-title');
+                    const desc = document.getElementById('end-desc');
+                    const endScore = document.getElementById('end-score');
+                    const endScoreLabel = document.getElementById('end-score-label');
+                    
+                    let depth = Math.floor((player.y - START_Y) / PIXELS_PER_METER);
+                    endScoreLabel.innerText = "심연 도달:";
+                    endScore.innerText = '-' + depth + 'm';
+                    
+                    title.innerText = 'GAME OVER';
+                    title.className = 'title-text text-4xl mb-4 text-red-500';
+                    desc.innerText = '영원한 형벌의 굴레에 갇혔습니다...';
+                }
+                return;
+            }
+
+            if (gameState !== 'PLAYING') return;
+
+            // Easter Egg Trigger Check (-100m 도달 시 발동)
+            let currentDepth = Math.floor((player.y - START_Y) / PIXELS_PER_METER);
+            if (currentDepth >= 100 && !chaseTriggered) {
+                triggerFateLostCutscene();
+                return;
+            }
+
+            // 컷씬 진행 중
+            if (cutsceneTimer > 0) {
+                cutsceneTimer--;
+                screenShake = 5;
+                if (cutsceneTimer === 0) {
+                    fateLostOverlay.classList.add('hidden');
+                    isChaseMode = true;
+                    monster.reset(canvas.width/2, player.y - 350);
+                    hpContainer.classList.remove('hidden');
+                    staminaContainer.classList.remove('hidden');
+                    btnShift.style.display = 'flex';
+                    hudScoreLabel.innerText = "심연 깊이";
+                    hudTargetLabel.innerText = "탈출 목표";
+                    hudTarget.innerText = "-600m"; // 600m로 변경
+                    updateHpUI();
+                }
+                return;
+            }
+
+            if (phase2TextTimer > 0) phase2TextTimer--;
+
+            // Entity Updates
+            player.update();
+            boulder.update();
+
+            if (isChaseMode) {
+                // 2페이즈 돌입 조건 (-250m)
+                if (currentDepth >= 250 && !isPhase2) {
+                    isPhase2 = true;
+                    player.hp = player.maxHp;
+                    updateHpUI();
+                    phase2TextTimer = 180; // 3초간 텍스트
+                    screenShake = 25;
+                    createParticles(player.x, player.y, 60, '#ff0000', 8);
+                }
+
+                monster.update();
+
+                // 2페이즈에서는 떨어지는 빈도 대폭 증가
+                let spawnRate = isPhase2 ? 2.5 : 1;
+                candleSpawnTimer += spawnRate;
+                if (candleSpawnTimer > 90) { 
+                    candleSpawnTimer = 0;
+                    let candleX = (canvas.width/2 - TRACK_WIDTH/2 + 20) + Math.random() * (TRACK_WIDTH - 60);
+                    let candleTargetY = player.y + 100 + Math.random() * 350;
+                    fallingCandles.push(new CandleObstacle(candleX, candleTargetY));
+                }
+
+                // 일자 횃불 장벽 추가
+                if (isPhase2) {
+                    candleWallTimer++;
+                    if (candleWallTimer >= 180) { // 약 3초 주기
+                        candleWallTimer = 0;
+                        spawnCandleWall();
+                    }
+                }
+
+                for (let i = fallingCandles.length - 1; i >= 0; i--) {
+                    fallingCandles[i].update();
+                    if (fallingCandles[i].y > cameraY + canvas.height + 200) {
+                        fallingCandles.splice(i, 1);
+                    }
+                }
+
+                // 클리어 조건 검사 (-600m)
+                if (currentDepth >= 600) {
+                    triggerGameOver(true, "-600m 심연을 완벽히 탈출했습니다!");
+                }
+            }
+
+            // Camera Following
+            let targetCamY = player.y - canvas.height * 0.55;
+            cameraY += (targetCamY - cameraY) * 0.1;
+
+            // 아래쪽 트랙 장애물 생성 (추격전 진행 방향)
+            if (isChaseMode) {
+                while (cameraY + canvas.height > downSpawnY - 500) {
+                    let y = downSpawnY;
+                    let type = Math.floor(Math.random() * 5);
+                    obstacles.push(new Obstacle(type, y, canvas.width/2));
+                    downSpawnY += (180 + Math.random() * 120);
+                }
+            } else {
+                // 기존 위쪽 트랙 장애물 생성
+                while (cameraY < nextSpawnY + 1000) {
+                    let y = nextSpawnY;
+                    let type = Math.floor(Math.random() * 6);
+                    obstacles.push(new Obstacle(type, y, canvas.width/2));
+                    nextSpawnY -= (150 + Math.random() * 120); 
+                }
+            }
+            
+            // 장애물 정리
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.update();
+                if (obs.y > cameraY + canvas.height + 600 || obs.y < cameraY - 800) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // 점수/깊이 계산
+            if (!isChaseMode) {
+                let currentMeters = Math.max(0, Math.floor((START_Y - boulder.y) / PIXELS_PER_METER));
+                if (currentMeters > score) {
+                    score = currentMeters;
+                    hudScore.innerText = score + 'm';
+                }
+
+                if (currentMode === 'CHALLENGE' && score >= targetHeight) {
+                    triggerGameOver(true);
+                }
+
+                // 일반 모드에서만 돌 떨어지면 패배
+                if (boulder.y > cameraY + canvas.height + 100) {
+                    triggerGameOver(false, "돌을 놓치고 말았습니다...");
+                }
+            } else {
+                hudScore.innerText = '-' + currentDepth + 'm';
+            }
+
+            // 파티클 업데이트
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                if (particles[i].life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function draw() {
+            if (gameState === 'MENU') return;
+
+            if (gameState === 'CRUCIFIED') {
+                ctx.fillStyle = '#01050a';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 파란색 십자가 렌더링
+                const cx = canvas.width / 2;
+                const cy = canvas.height / 2 - 50;
+
+                ctx.save();
+                ctx.shadowColor = '#00f3ff';
+                ctx.shadowBlur = 30;
+                ctx.fillStyle = '#082f49'; 
+                ctx.fillRect(cx - 15, cy - 100, 30, 250);
+                ctx.fillRect(cx - 80, cy - 30, 160, 25);  
+
+                ctx.shadowBlur = 10;
+                ctx.strokeStyle = '#00f3ff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(cx - 15, cy - 100, 30, 250);
+                ctx.strokeRect(cx - 80, cy - 30, 160, 25);
+                ctx.restore();
+
+                // 십자가에 매달린 캐릭터
+                ctx.save();
+                ctx.fillStyle = player.color;
+                
+                // 고개 숙인 머리
+                ctx.beginPath();
+                ctx.arc(cx, cy - 15, player.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#8a5c34';
+                ctx.stroke();
+
+                // 묶인 양팔
+                ctx.strokeStyle = player.color;
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + 5);
+                ctx.lineTo(cx - 70, cy - 15);
+                ctx.moveTo(cx, cy + 5);
+                ctx.lineTo(cx + 70, cy - 15);
+                ctx.stroke();
+
+                // 사슬/구속구
+                ctx.strokeStyle = '#00f3ff';
+                ctx.lineWidth = 3;
+                ctx.shadowColor = '#00f3ff';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(cx - 70, cy - 15, 8, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(cx + 70, cy - 15, 8, 0, Math.PI*2);
+                ctx.stroke();
+                
+                // 흘러내리는 파티클 효과 (피 대신 파란 빛)
+                if (Math.random() < 0.3) {
+                    createParticles(cx, cy - 15, 1, '#00f3ff', 2);
+                }
+                
+                // 기존 파티클 렌더링 (빛방울 떨어짐)
+                particles.forEach(p => {
+                    p.y += 2; // 강제 낙하
+                    p.draw(ctx, 0); // camY=0
+                });
+
+                ctx.restore();
+                return;
+            }
+
+            ctx.save();
+            // 화면 흔들림 효과
+            if (screenShake > 0) {
+                let rx = (Math.random() - 0.5) * screenShake;
+                let ry = (Math.random() - 0.5) * screenShake;
+                ctx.translate(rx, ry);
+                screenShake *= 0.9;
+                if (screenShake < 0.5) screenShake = 0;
+            }
+
+            drawBackground();
+            
+            particles.forEach(p => p.draw(ctx, cameraY));
+            obstacles.forEach(obs => obs.draw(ctx, cameraY));
+            fallingCandles.forEach(c => c.draw(ctx, cameraY));
+
+            if (isChaseMode) {
+                monster.draw(ctx, cameraY);
+            }
+
+            if (player.y < boulder.y) {
+                player.draw(ctx, cameraY);
+                boulder.draw(ctx, cameraY);
+            } else {
+                boulder.draw(ctx, cameraY);
+                player.draw(ctx, cameraY);
+            }
+
+            // 출발선 렌더링
+            const startScreenY = START_Y - cameraY;
+            if (startScreenY > -50 && startScreenY < canvas.height + 50) {
+                ctx.fillStyle = "rgba(0, 255, 0, 0.5)";
+                ctx.fillRect(canvas.width/2 - TRACK_WIDTH/2, startScreenY, TRACK_WIDTH, 10);
+                ctx.fillStyle = '#fff';
+                ctx.font = '20px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.fillText("START", canvas.width/2, startScreenY - 10);
+            }
+
+            // 2페이즈 타이틀 UI 렌더링
+            if (phase2TextTimer > 0) {
+                let fade = 1;
+                if (phase2TextTimer > 150) fade = (180 - phase2TextTimer) / 30;
+                else if (phase2TextTimer < 30) fade = phase2TextTimer / 30;
+                
+                ctx.fillStyle = `rgba(0, 0, 0, ${fade * 0.75})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.textAlign = 'center';
+                ctx.font = '900 48px "Cinzel"';
+                ctx.fillStyle = `rgba(220, 38, 38, ${fade})`; // 붉은색
+                ctx.fillText("Proelium Fatale", canvas.width/2, canvas.height/2 - 30);
+                
+                ctx.font = 'bold 22px "Cinzel"';
+                ctx.fillStyle = `rgba(253, 224, 71, ${fade})`; // 황금색
+                ctx.fillText("LASCIATE OGNI SPERANZA, VOI CH'ENTRATE", canvas.width/2, canvas.height/2 + 25);
+            }
+
+            ctx.restore();
+        }
+
+        function gameLoop(time) {
+            update(time);
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function triggerFateLostCutscene() {
+            chaseTriggered = true;
+            cutsceneTimer = 120; // 2초 연출
+            screenShake = 15;
+            fateLostOverlay.classList.remove('hidden');
+            createParticles(canvas.width/2, cameraY + canvas.height/2, 50, '#ff0000', 8);
+        }
+
+        function startGame(mode, target) {
+            currentMode = mode;
+            targetHeight = target;
+            score = 0;
+            particles = [];
+            fallingCandles = [];
+            obstacles = [];
+            
+            isChaseMode = false;
+            chaseTriggered = false;
+            cutsceneTimer = 0;
+            isPhase2 = false;
+            phase2TextTimer = 0;
+            candleWallTimer = 0;
+            
+            nextSpawnY = START_Y - 400;
+            downSpawnY = START_Y + 400;
+            
+            player.reset(canvas.width/2, START_Y - 50);
+            boulder.reset(canvas.width/2, START_Y - 100);
+            cameraY = player.y - canvas.height/2;
+
+            uiMainMenu.classList.add('hidden');
+            uiEndMenu.classList.add('hidden');
+            fateLostOverlay.classList.add('hidden');
+            document.getElementById('crucify-overlay').classList.add('hidden');
+            hpContainer.classList.add('hidden');
+            staminaContainer.classList.add('hidden');
+            btnShift.style.display = 'none';
+            uiHud.classList.remove('hidden');
+
+            hudScoreLabel.innerText = "현재 높이";
+            hudScore.innerText = '0m';
+            if (mode === 'CHALLENGE') {
+                hudTargetLabel.innerText = '목표 높이';
+                hudTarget.innerText = targetHeight + 'm';
+            } else {
+                hudTargetLabel.innerText = '최고 기록';
+                let best = localStorage.getItem('sisyphusBest') || 0;
+                hudTarget.innerText = best + 'm';
+            }
+
+            gameState = 'PLAYING';
+            if (!animationId) {
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function triggerGameOver(isWin, customDesc) {
+            if (customDesc === "crucify" || (!isWin && isChaseMode)) {
+                gameState = 'CRUCIFIED';
+                crucifyTimer = 0;
+                uiHud.classList.add('hidden');
+                document.getElementById('crucify-overlay').classList.remove('hidden');
+                return;
+            }
+
+            gameState = isWin ? 'VICTORY' : 'GAMEOVER';
+            uiHud.classList.add('hidden');
+            uiEndMenu.classList.remove('hidden');
+            
+            const title = document.getElementById('end-title');
+            const desc = document.getElementById('end-desc');
+            const endScore = document.getElementById('end-score');
+            const endScoreLabel = document.getElementById('end-score-label');
+
+            if (isChaseMode) {
+                let depth = Math.floor((player.y - START_Y) / PIXELS_PER_METER);
+                endScoreLabel.innerText = "심연 도달:";
+                endScore.innerText = '-' + depth + 'm';
+            } else {
+                endScoreLabel.innerText = "도달:";
+                endScore.innerText = score + 'm';
+            }
+
+            if (isWin) {
+                title.innerText = 'VICTORY!';
+                title.className = 'title-text text-4xl mb-4 text-green-400';
+                desc.innerText = customDesc || '정상에 도달했습니다! 당신은 운명을 극복했습니다.';
+            } else {
+                title.innerText = 'GAME OVER';
+                title.className = 'title-text text-4xl mb-4 text-red-500';
+                desc.innerText = customDesc || '형벌은 계속됩니다...';
+            }
+        }
+
+        function retryGame() {
+            startGame(currentMode, targetHeight);
+        }
+
+        function returnToMenu() {
+            uiEndMenu.classList.add('hidden');
+            uiMainMenu.classList.remove('hidden');
+            gameState = 'MENU';
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        ctx.fillStyle = '#0a0a0c';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    </script>
+</body>
+</html>
